@@ -9,3 +9,6 @@ rel/example_project
 .concrete/DEV_MODE
 .rebar
 tmp
+.erlang.mk/
+doc/
+ecpool.d
