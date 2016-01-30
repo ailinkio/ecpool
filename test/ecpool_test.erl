@@ -58,7 +58,8 @@ pool_test_() ->
      [?_test(t_start_pool()),
       ?_test(t_start_sup_pool()),
       ?_test(t_restart_client()),
-      ?_test(t_reconnect_client())]}.
+      ?_test(t_reconnect_client()),
+      ?_test(t_nowait_pool())]}.
 
 t_start_pool() ->
     ecpool:start_pool(?POOL, test_client, ?POOL_OPTS),
@@ -103,6 +104,15 @@ t_reconnect_client() ->
     ?assert(lists:member(false, [ecpool_worker:is_connected(Pid) || {_, Pid} <- ecpool:workers(?POOL)])),
     timer:sleep(1100),
     ?assertEqual(4, length(ecpool:workers(?POOL))).
+
+t_nowait_pool() ->
+    ecpool:start_pool(?POOL, test_client, [{pool_size, 2}, {pool_busy, nowait}]),
+    spawn(ecpool, with_client, [?POOL, fun(Client) -> test_client:sleep(Client, 10) end]),
+    spawn(ecpool, with_client, [?POOL, fun(Client) -> test_client:sleep(Client, 10) end]),
+    timer:sleep(1),
+    ?assertEqual({error, pool_busy}, ecpool:with_client(?POOL, fun(_Client) -> do_nothing end)),
+    timer:sleep(20).
+
 
 -endif.
 

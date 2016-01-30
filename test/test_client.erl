@@ -10,7 +10,7 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([connect/1, stop/2]).
+-export([connect/1, sleep/2, stop/2]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -26,6 +26,9 @@
 connect(Opts) ->
     gen_server:start_link(?MODULE, [Opts], []).
 
+sleep(Pid, I) ->
+    gen_server:call(Pid, {sleep, I}).
+
 stop(Pid, Reason) ->
     gen_server:call(Pid, {stop, Reason}).
 
@@ -35,6 +38,10 @@ stop(Pid, Reason) ->
 
 init(Args) ->
     {ok, Args}.
+
+handle_call({sleep, I}, _From, State) ->
+    timer:sleep(I),
+    {reply, ok, State};
 
 handle_call({stop, Reason}, _From, State) ->
     {stop, Reason, ok, State};
