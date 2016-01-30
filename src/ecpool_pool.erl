@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2015 eMQTT.IO, All Rights Reserved.
+%%% Copyright (c) 2015-2016 Feng Lee <feng@emqtt.io>. All Rights Reserved.
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -31,16 +31,13 @@
 -import(proplists, [get_value/3]).
 
 %% API Function Exports
--export([start_link/2, info/1]).
+-export([start_link/2, info/1, busy_wait/1]).
 
-%% ------------------------------------------------------------------
 %% gen_server Function Exports
-%% ------------------------------------------------------------------
-
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {name, size, type}).
+-record(state, {name, size}).
 
 %%%=============================================================================
 %%% API
@@ -52,6 +49,9 @@ start_link(Pool, Opts) ->
 info(Pid) ->
     gen_server:call(Pid, info).
 
+busy_wait(Pool) ->
+    ets:lookup_element(ecpool, {Pool, wait}, 2).
+
 %%%=============================================================================
 %%% gen_server callbacks
 %%%=============================================================================
@@ -59,12 +59,16 @@ info(Pid) ->
 init([Pool, Opts]) ->
     Schedulers = erlang:system_info(schedulers),
     PoolSize = get_value(pool_size, Opts, Schedulers),
-    PoolType = get_value(pool_type, Opts, random),
-    ensure_pool(ecpool:name(Pool), PoolType, [{size, PoolSize}]),
+    BusyWait = case get_value(pool_busy, Opts, nowait) of
+                nowait     -> nowait;
+                {wait, Ms} -> {busy_wait, Ms}
+               end,
+    ets:insert(ecpool, {{Pool, wait}, BusyWait}),
+    ensure_pool(ecpool:name(Pool), claim, [{size, PoolSize}]),
     lists:foreach(fun(I) ->
             ensure_pool_worker(ecpool:name(Pool), {Pool, I}, I)
         end, lists:seq(1, PoolSize)),
-    {ok, #state{name = Pool, size = PoolSize, type = PoolType}}.
+    {ok, #state{name = Pool, size = PoolSize}}.
 
 ensure_pool(Pool, Type, Opts) ->
     try gproc_pool:new(Pool, Type, Opts)
@@ -78,13 +82,13 @@ ensure_pool_worker(Pool, Name, Slot) ->
         error:exists -> ok
     end.
 
-handle_call(info, _From, State = #state{name = Pool, size = Size, type = Type}) ->
-    Info = [{pool_name, Pool}, {pool_size, Size},
-            {pool_type, Type}, {workers, ecpool:workers(Pool)}],
-    {reply, Info, State};
+handle_call(info, _From, State = #state{name = Pool, size = Size}) ->
+    {reply, [{pool_name, Pool}, {pool_size, Size},
+             {pool_busy, busy_wait(Pool)},
+             {workers, ecpool:workers(Pool)}], State};
 
 handle_call(_Request, _From, State) ->
-    {reply, {error, unexpected_req}, State}.
+    {reply, {error, badreq}, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -96,7 +100,8 @@ terminate(_Reason, #state{name = Pool, size = Size}) ->
     lists:foreach(fun(I) ->
                 gproc_pool:remove_worker(ecpool:name(Pool), {Pool, I})
         end, lists:seq(1, Size)),
-    gproc_pool:delete(ecpool:name(Pool)).
+    gproc_pool:delete(ecpool:name(Pool)),
+    ets:delete(ecpool, {Pool, wait}).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.

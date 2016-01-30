@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2015 eMQTT.IO, All Rights Reserved.
+%%% Copyright (c) 2015-2016 Feng Lee <feng@emqtt.io>. All Rights Reserved.
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -26,17 +26,19 @@
 
 -module(ecpool).
 
--export([pool_spec/4, start_pool/3, start_sup_pool/3, stop_sup_pool/1,
-         get_client/1, get_client/2, with_client/2, with_client/3,
-         name/1, workers/1]).
-
--type pool_type() :: random | hash | round_robin.
+%% API Exports
+-export([name/1, pool_spec/4, start_pool/3, start_sup_pool/3, stop_sup_pool/1,
+         with_client/2, workers/1]).
 
 -type option() :: {pool_size, pos_integer()}
-                | {pool_type, pool_type()}
+                | {pool_busy, nowait | {wait, pos_integer()}}
                 | {auto_reconnect, false | pos_integer()}
-                | tuple().
+                | proplists:proplist().
 
+%% @doc ecpool name
+name(Pool) -> {?MODULE, Pool}.
+
+%% @doc Pool ChildSpec
 pool_spec(ChildId, Pool, Mod, Opts) ->
     {ChildId, {?MODULE, start_pool, [Pool, Mod, Opts]},
         permanent, 5000, supervisor, [ecpool_pool_sup]}.
@@ -54,35 +56,23 @@ start_sup_pool(Pool, Mod, Opts) when is_atom(Pool) ->
 stop_sup_pool(Pool) when is_atom(Pool) ->
     ecpool_sup:stop_pool(Pool).
 
-%% @doc Get client/connection
--spec get_client(atom()) -> pid().
-get_client(Pool) ->
-    gproc_pool:pick_worker(name(Pool)).
-
-%% @doc Get client/connection with hash key.
--spec get_client(atom(), any()) -> pid().
-get_client(Pool, Key) ->
-    gproc_pool:pick_worker(name(Pool), Key).
-
 %% @doc Call the fun with client/connection
 -spec with_client(atom(), fun((Client :: pid()) -> any())) -> any().
 with_client(Pool, Fun) when is_atom(Pool) ->
-    with_worker(gproc_pool:pick_worker(name(Pool)), Fun).
-
-%% @doc Call the fun with client/connection
--spec with_client(atom(), any(), fun((Client :: pid()) -> any())) -> any().
-with_client(Pool, Key, Fun) when is_atom(Pool) ->
-    with_worker(gproc_pool:pick_worker(name(Pool), Key), Fun).
-
-with_worker(Worker, Fun) ->
-    case ecpool_worker:client(Worker) of
-        {ok, Client}    -> Fun(Client);
-        {error, Reason} -> {error, Reason}
+    case gproc_pool:claim(name(Pool), fun(_, Pid) -> with_worker(Pid, Fun) end,
+                          ecpool_pool:busy_wait(Pool)) of
+        {true, Res} -> Res;
+        false       -> {error, pool_busy}
     end.
 
-%% @doc ecpool name
-name(Pool) -> {?MODULE, Pool}.
+%% @private
+with_worker(WorkerPid, Fun) ->
+    case ecpool_worker:client(WorkerPid) of
+        {ok, Client}    -> Fun(Client);
+        Error           -> Error
+    end.
 
 %% @doc pool workers
-workers(Pool) -> gproc_pool:active_workers(name(Pool)).
+workers(Pool) ->
+    gproc_pool:active_workers(name(Pool)).
 

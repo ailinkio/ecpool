@@ -32,8 +32,8 @@
 -define(POOL_OPTS, [
         %% schedulers number
         {pool_size, 10},
-        %% round-robbin | random | hash
-        {pool_type, random},
+        %% nowait | {wait, pos_integer()}
+        {pool_busy, nowait},
         %% false | pos_integer()
         {auto_reconnect, false},
        

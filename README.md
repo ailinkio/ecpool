@@ -33,8 +33,8 @@ For example:
 ```
 PgOpts = [%% Pool Size
           {pool_size, 10},
-          %% Pool Type: round_robin | random | hash
-          {pool_type, round_robin},
+          %% Pool Type: claim
+          {pool_busy, nowait},
           %% Auto reconnect
           {auto_reconnect, 3},
 

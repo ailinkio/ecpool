@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2015-2016 eMQTT.IO, All Rights Reserved.
+%%% Copyright (c) 2015-2016 Feng Lee <feng@emqtt.io>. All Rights Reserved.
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -68,7 +68,7 @@ start_link(Pool, Id, Mod, Opts) ->
     gen_server:start_link(?MODULE, [Pool, Id, Mod, Opts], []).
 
 %% @doc Get client/connection.
--spec client(pid()) -> undefined | pid().
+-spec client(Worker :: pid()) -> {ok, pid()} | {error, disconnected}.
 client(Pid) ->
     gen_server:call(Pid, client, infinity).
 
@@ -140,7 +140,7 @@ connopts([], Acc) ->
     Acc;
 connopts([{pool_size, _} | Opts], Acc) ->
     connopts(Opts, Acc);
-connopts([{pool_type, _} | Opts], Acc) ->
+connopts([{pool_busy, _} | Opts], Acc) ->
     connopts(Opts, Acc);
 connopts([{auto_reconnect, _} | Opts], Acc) ->
     connopts(Opts, Acc);
