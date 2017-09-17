@@ -68,7 +68,7 @@ start_link(Pool, Id, Mod, Opts) ->
     gen_server:start_link(?MODULE, [Pool, Id, Mod, Opts], []).
 
 %% @doc Get client/connection.
--spec client(Worker :: pid()) -> {ok, pid()} | {error, disconnected}.
+-spec client(Worker :: pid()) -> {ok, pid()} | {error, not_connected}.
 client(Pid) ->
     gen_server:call(Pid, client, infinity).
 
@@ -96,7 +96,7 @@ handle_call(is_connected, _From, State = #state{client = Client}) ->
     {reply, Client =/= undefined andalso is_process_alive(Client), State};
 
 handle_call(client, _From, State = #state{client = undefined}) ->
-    {reply, {error, disconnected}, State};
+    {reply, {error, not_connected}, State};
 
 handle_call(client, _From, State = #state{client = Client}) ->
     {reply, {ok, Client}, State}.
