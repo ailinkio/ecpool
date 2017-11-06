@@ -1,30 +1,26 @@
-%%%-----------------------------------------------------------------------------
-%% Copyright (c) 2015-2016 Feng Lee <feng@emqtt.io>.
-%%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
-%%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
-%%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc ecpool supervisor.
-%%%
-%%% @author Feng Lee <feng@emqtt.io>
-%%%-----------------------------------------------------------------------------
+%%--------------------------------------------------------------------
+%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+%%--------------------------------------------------------------------
+%%
+%% @doc ECPool Supervisor.
+%%
+%%--------------------------------------------------------------------
 
 -module(ecpool_sup).
+
+-author("Feng Lee <feng@emqtt.io>").
 
 -behaviour(supervisor).
 
@@ -39,12 +35,11 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-start_pool(Pool, Mod, Opts) when is_atom(Pool) ->
-    supervisor:start_child(?MODULE, pool_spec(Pool, Mod, Opts)).
+start_pool(PoolId, Mod, Opts) ->
+    supervisor:start_child(?MODULE, pool_spec(PoolId, Mod, Opts)).
 
--spec(stop_pool(Pool :: atom()) -> ok | {error, any()}).
-stop_pool(Pool) when is_atom(Pool) ->
-    ChildId = child_id(Pool),
+stop_pool(PoolId) ->
+    ChildId = child_id(PoolId),
 	case supervisor:terminate_child(?MODULE, ChildId) of
         ok ->
             supervisor:delete_child(?MODULE, ChildId);
@@ -53,15 +48,15 @@ stop_pool(Pool) when is_atom(Pool) ->
 	end.
 
 %% @doc All Pools supervisored by ecpool_sup.
--spec(pools() -> [{atom(), pid()}]).
+-spec(pools() -> [{ecpool:pool_id(), pid()}]).
 pools() ->
-    [{Pool, Pid} || {{pool_sup, Pool}, Pid, supervisor, _}
-                    <- supervisor:which_children(?MODULE)].
+    [{PoolId, Pid} || {{pool_sup, PoolId}, Pid, supervisor, _}
+                      <- supervisor:which_children(?MODULE)].
 
 %% @doc Find a pool.
--spec(pool(atom()) -> undefined | pid()).
-pool(Pool) when is_atom(Pool) ->
-    ChildId = child_id(Pool),
+-spec(pool(ecpool:pool_id()) -> undefined | pid()).
+pool(PoolId) ->
+    ChildId = child_id(PoolId),
     case [Pid || {Id, Pid, supervisor, _} <- supervisor:which_children(?MODULE), Id =:= ChildId] of
         [] -> undefined;
         L  -> hd(L)
@@ -74,10 +69,11 @@ pool(Pool) when is_atom(Pool) ->
 init([]) ->
     {ok, { {one_for_one, 10, 100}, []} }.
 
-pool_spec(Pool, Mod, Opts) ->
-    {child_id(Pool),
-        {ecpool_pool_sup, start_link, [Pool, Mod, Opts]},
+pool_spec(PoolId, Mod, Opts) ->
+    {child_id(PoolId),
+        {ecpool_pool_sup, start_link, [PoolId, Mod, Opts]},
             transient, infinity, supervisor, [ecpool_pool_sup]}.
 
-child_id(Pool) -> {pool_sup, Pool}.
+child_id(PoolId) ->
+    {pool_sup, PoolId}.
 

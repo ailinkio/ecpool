@@ -1,30 +1,26 @@
-%%%-----------------------------------------------------------------------------
-%% Copyright (c) 2015-2016 Feng Lee <feng@emqtt.io>.
-%%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
-%%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
-%%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc Wrap gproc_pool.
-%%%
-%%% @author Feng Lee <feng@emqtt.io>
-%%%-----------------------------------------------------------------------------
+%%--------------------------------------------------------------------
+%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+%%--------------------------------------------------------------------
+%%
+%% @doc Wrap gproc_pool.
+%%
+%%--------------------------------------------------------------------
 
 -module(ecpool_pool).
+
+-author("Feng Lee <feng@emqtt.io>").
 
 -behaviour(gen_server).
 
@@ -33,54 +29,53 @@
 %% API Function Exports
 -export([start_link/2, info/1]).
 
-%% ------------------------------------------------------------------
 %% gen_server Function Exports
-%% ------------------------------------------------------------------
-
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -record(state, {name, size, type}).
 
-%%%=============================================================================
-%%% API
-%%%=============================================================================
+%%--------------------------------------------------------------------
+%% API
+%%--------------------------------------------------------------------
 
-start_link(Pool, Opts) ->
-    gen_server:start_link(?MODULE, [Pool, Opts], []).
+start_link(PoolId, Opts) ->
+    gen_server:start_link(?MODULE, [PoolId, Opts], []).
 
 info(Pid) ->
     gen_server:call(Pid, info).
 
-%%%=============================================================================
-%%% gen_server callbacks
-%%%=============================================================================
+%%--------------------------------------------------------------------
+%% gen_server callbacks
+%%--------------------------------------------------------------------
 
-init([Pool, Opts]) ->
+init([PoolId, Opts]) ->
     Schedulers = erlang:system_info(schedulers),
     PoolSize = get_value(pool_size, Opts, Schedulers),
     PoolType = get_value(pool_type, Opts, random),
-    ensure_pool(ecpool:name(Pool), PoolType, [{size, PoolSize}]),
+    ensure_pool(ecpool:name(PoolId), PoolType, [{size, PoolSize}]),
     lists:foreach(fun(I) ->
-            ensure_pool_worker(ecpool:name(Pool), {Pool, I}, I)
+            ensure_pool_worker(ecpool:name(PoolId), {PoolId, I}, I)
         end, lists:seq(1, PoolSize)),
-    {ok, #state{name = Pool, size = PoolSize, type = PoolType}}.
+    {ok, #state{name = PoolId, size = PoolSize, type = PoolType}}.
 
-ensure_pool(Pool, Type, Opts) ->
-    try gproc_pool:new(Pool, Type, Opts)
+ensure_pool(PoolId, Type, Opts) ->
+    try gproc_pool:new(PoolId, Type, Opts)
     catch
         error:exists -> ok
     end.
 
-ensure_pool_worker(Pool, Name, Slot) ->
-    try gproc_pool:add_worker(Pool, Name, Slot)
+ensure_pool_worker(PoolId, Name, Slot) ->
+    try gproc_pool:add_worker(PoolId, Name, Slot)
     catch
         error:exists -> ok
     end.
 
-handle_call(info, _From, State = #state{name = Pool, size = Size, type = Type}) ->
-    Info = [{pool_name, Pool}, {pool_size, Size},
-            {pool_type, Type}, {workers, ecpool:workers(Pool)}],
+handle_call(info, _From, State = #state{name = PoolId, size = Size, type = Type}) ->
+    Info = [{pool_id, PoolId},
+            {pool_size, Size},
+            {pool_type, Type},
+            {workers, ecpool:workers(PoolId)}],
     {reply, Info, State};
 
 handle_call(_Request, _From, State) ->
@@ -92,11 +87,11 @@ handle_cast(_Msg, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{name = Pool, size = Size}) ->
+terminate(_Reason, #state{name = PoolId, size = Size}) ->
     lists:foreach(fun(I) ->
-                gproc_pool:remove_worker(ecpool:name(Pool), {Pool, I})
+                gproc_pool:remove_worker(ecpool:name(PoolId), {PoolId, I})
         end, lists:seq(1, Size)),
-    gproc_pool:delete(ecpool:name(Pool)).
+    gproc_pool:delete(ecpool:name(PoolId)).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
